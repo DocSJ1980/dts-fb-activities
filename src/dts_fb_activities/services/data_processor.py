@@ -165,6 +165,14 @@ class DataProcessingService:
                     continue
 
                 # Extract main data (excluding Container Tag, Checked, Positive)
+                # Extract picture URL with full domain
+                picture_cell = cells[15]
+                picture_link = picture_cell.find('a')
+                if picture_link and picture_link.get('href'):
+                    picture_url = f"https://dashboard-tracking.punjab.gov.pk{picture_link.get('href')}"
+                else:
+                    picture_url = cells[15].get_text(strip=True)
+
                 main_record = {
                     'Sr_No': cells[0].get_text(strip=True),
                     'Activity_ID': cells[1].get_text(strip=True),
@@ -178,7 +186,7 @@ class DataProcessingService:
                     'Tag': cells[10].get_text(strip=True),
                     'Submitted_by': cells[13].get_text(strip=True),
                     'Activity_DateTime': cells[14].get_text(strip=True),
-                    'Picture': cells[15].get_text(strip=True)
+                    'Picture': picture_url
                 }
                 main_data.append(main_record)
 
