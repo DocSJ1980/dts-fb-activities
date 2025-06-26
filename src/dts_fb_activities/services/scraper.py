@@ -4,7 +4,11 @@ import re
 import requests
 from datetime import datetime
 from typing import Optional
+import urllib3
 from ..core.config import settings
+
+# Disable SSL warnings for unverified HTTPS requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ScrapingError(Exception):

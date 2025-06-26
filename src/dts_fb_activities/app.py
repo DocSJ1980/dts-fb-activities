@@ -35,7 +35,9 @@ async def lifespan(app: FastAPI):
     try:
         from .services.auth import auth_service
         from .services.data_access import data_service
+        from .services.cache import cache_service
         logger.info("Configuration validated successfully")
+        logger.info("Cache service initialized")
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         # Don't raise here to allow the app to start for health checks

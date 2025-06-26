@@ -1,0 +1,21 @@
+# Git and Python virtual environment
+.git
+.venv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE and editor files
+.idea
+.vscode
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore

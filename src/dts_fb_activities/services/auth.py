@@ -2,8 +2,13 @@
 
 import json
 import requests
+import urllib3
 from typing import Optional
 from ..core.config import settings
+from .cache import cache_service  # Import cache service
+
+# Disable SSL warnings for unverified HTTPS requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class AuthenticationError(Exception):
@@ -32,7 +37,7 @@ class AuthService:
     
     def get_cookie_value(self) -> str:
         """
-        Retrieve authentication cookie from the cookie service.
+        Retrieve authentication cookie from the cookie service, with caching.
         
         Returns:
             str: Cookie value for dashboard authentication
@@ -40,38 +45,51 @@ class AuthService:
         Raises:
             AuthenticationError: If authentication fails
         """
-        try:
-            # Prepare authentication payload
-            payload = json.dumps({
-                "username": self.username,
-                "password": self.password
-            })
-            
-            # Set content type for JSON request
-            headers = {"Content-Type": "application/json"}
-            
-            # Make authentication request
-            response = requests.post(
-                self.cookie_url,
-                headers=headers,
-                data=payload,
-                timeout=30
-            )
-            response.raise_for_status()
-            
-            # Parse response and extract cookie
-            response_json = response.json()
-            
-            if response_json.get("success") and "cookies" in response_json:
-                cookie_value = response_json["cookies"][0]["value"]
-                return cookie_value
-            else:
-                raise AuthenticationError("Invalid response format or unsuccessful request")
+        # Define cache key for the cookie
+        cache_key = cache_service.create_key_for_cookie()
+
+        # Define function to fetch the cookie
+        def fetch_cookie():
+            try:
+                # Prepare authentication payload
+                payload = json.dumps({
+                    "username": self.username,
+                    "password": self.password
+                })
                 
-        except requests.RequestException as e:
-            raise AuthenticationError(f"Failed to authenticate: {str(e)}")
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            raise AuthenticationError(f"Failed to parse authentication response: {str(e)}")
+                # Set content type for JSON request
+                headers = {"Content-Type": "application/json"}
+                
+                # Make authentication request
+                response = requests.post(
+                    self.cookie_url,
+                    headers=headers,
+                    data=payload,
+                    timeout=30
+                )
+                response.raise_for_status()
+                
+                # Parse response and extract cookie
+                response_json = response.json()
+                
+                if response_json.get("success") and "cookies" in response_json:
+                    cookie_value = response_json["cookies"][0]["value"]
+                    return cookie_value
+                else:
+                    raise AuthenticationError("Invalid response format or unsuccessful request")
+                    
+            except requests.RequestException as e:
+                raise AuthenticationError(f"Failed to authenticate: {str(e)}")
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
+                raise AuthenticationError(f"Failed to parse authentication response: {str(e)}")
+
+        # Get from cache or fetch and set cache
+        cookie = cache_service.get_or_set(cache_key, fetch_cookie, ttl=300)  # 5 minutes
+        
+        if not cookie:
+            raise AuthenticationError("Failed to retrieve cookie from cache or fetch")
+            
+        return cookie
 
 
 # Global auth service instance

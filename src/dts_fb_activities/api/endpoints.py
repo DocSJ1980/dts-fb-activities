@@ -11,6 +11,7 @@ from ..models.schemas import (
 from ..services.auth import auth_service, AuthenticationError
 from ..services.data_access import data_service, DataAccessError
 from ..services.data_processor import data_processor, DataProcessingError
+from ..services.cache import cache_service
 from ..core.config import settings
 
 router = APIRouter()
@@ -35,8 +36,16 @@ async def get_towns():
         List[TownData]: List of all towns
     """
     try:
-        towns = data_service.get_all_towns()
+        # Generate cache key for towns
+        cache_key = cache_service.create_key_for_towns()
+        
+        # Try to get from cache first, otherwise fetch and cache
+        def fetch_towns():
+            return data_service.get_all_towns()
+        
+        towns = cache_service.get_or_set(cache_key, fetch_towns, ttl=300)  # 5 minutes
         return towns
+        
     except DataAccessError as e:
         raise HTTPException(status_code=500, detail=f"Data access error: {str(e)}")
     except Exception as e:
@@ -59,8 +68,16 @@ async def get_ucs_by_town(town_code: int):
         if not data_service.validate_town_code(town_code):
             raise HTTPException(status_code=404, detail=f"Town code {town_code} not found")
         
-        ucs = data_service.get_ucs_by_town_code(town_code)
+        # Generate cache key for UCs
+        cache_key = cache_service.create_key_for_ucs(town_code)
+        
+        # Try to get from cache first, otherwise fetch and cache
+        def fetch_ucs():
+            return data_service.get_ucs_by_town_code(town_code)
+        
+        ucs = cache_service.get_or_set(cache_key, fetch_ucs, ttl=300)  # 5 minutes
         return ucs
+        
     except DataAccessError as e:
         raise HTTPException(status_code=500, detail=f"Data access error: {str(e)}")
     except HTTPException:
@@ -100,30 +117,44 @@ async def get_surveillance_data(
         if not data_service.validate_uc_code(town_code, uc_code):
             raise HTTPException(status_code=404, detail=f"UC code {uc_code} not found for town {town_code}")
         
-        # Get authentication cookie
-        try:
-            cookie_value = auth_service.get_cookie_value()
-        except AuthenticationError as e:
-            raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        # Generate cache key for this specific request
+        cache_key = cache_service.create_key_for_surveillance_data(date, town_code, uc_code)
         
-        # Get surveillance data
-        try:
-            combined_data, container_data = data_processor.combine_data(
-                cookie_value, target_date, town_code, uc_code
-            )
-        except DataProcessingError as e:
-            raise HTTPException(status_code=500, detail=f"Data processing error: {str(e)}")
+        # Define function to fetch surveillance data
+        def fetch_surveillance_data():
+            # Get authentication cookie
+            try:
+                cookie_value = auth_service.get_cookie_value()
+            except AuthenticationError as e:
+                raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+            
+            # Get surveillance data
+            try:
+                combined_data, container_data = data_processor.combine_data(
+                    cookie_value, target_date, town_code, uc_code
+                )
+                return SurveillanceResponse(
+                    combined_data=combined_data,
+                    container_data=container_data,
+                    total_records=len(combined_data)
+                )
+            except DataProcessingError as e:
+                raise HTTPException(status_code=500, detail=f"Data processing error: {str(e)}")
         
-        return SurveillanceResponse(
-            combined_data=combined_data,
-            container_data=container_data,
-            total_records=len(combined_data)
-        )
+        # Try to get from cache first, otherwise fetch and cache
+        return cache_service.get_or_set(cache_key, fetch_surveillance_data, ttl=300)  # 5 minutes
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Cache status endpoint
+@router.get("/cache-status")
+async def cache_status():
+    """Endpoint to get current cache statistics."""
+    return cache_service.get_stats()
 
 
 # Exception handlers are defined in the main app.py file

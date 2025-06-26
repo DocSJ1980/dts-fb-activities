@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # File paths
     data_file_path: str = Field(
-        default="src/dts_fb_activities/town-uc-codes.xlsx",
+        default="town-uc-codes.xlsx",
         description="Path to town-uc-codes.xlsx file"
     )
     
@@ -55,10 +55,10 @@ def get_data_file_path() -> Path:
     """Get the absolute path to the data file."""
     # Get the project root directory
     current_file = Path(__file__)
-    project_root = current_file.parent.parent.parent.parent
-    
-    # Construct the path to the data file
-    data_path = project_root / settings.data_file_path
+    # Assuming the script is in src/dts_fb_activities/core
+    # and the data file is in src/dts_fb_activities
+    data_dir = current_file.parent.parent
+    data_path = data_dir / settings.data_file_path
     
     if not data_path.exists():
         raise FileNotFoundError(f"Data file not found at: {data_path}")
