@@ -1,8 +1,8 @@
 """Pydantic models for API request/response schemas."""
 
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import List, Optional, Union
+from pydantic import BaseModel, Field, field_validator
 
 
 class TownData(BaseModel):
@@ -16,6 +16,42 @@ class UCData(BaseModel):
     uc_name: str = Field(..., description="Name of the UC")
     town_code: int = Field(..., description="Code of the town this UC belongs to")
     uc_code: int = Field(..., description="Unique code for the UC")
+
+
+class UserData(BaseModel):
+    """Model for user data."""
+    name: str = Field(..., description="User's name")
+    fh_name: Optional[str] = Field(default=None, description="Father/husband name")
+    cnic: int = Field(..., description="CNIC number")
+    designation: str = Field(..., description="User's designation")
+    contact_no: str = Field(..., description="Contact number")
+    username: str = Field(..., description="Username")
+    username_prefix: str = Field(..., description="Username prefix")
+    full_name: str = Field(..., description="Full name")
+
+    @field_validator('contact_no', mode='before')
+    @classmethod
+    def validate_contact_no(cls, v):
+        """Convert contact number to string if it's an integer."""
+        if isinstance(v, int):
+            return str(v)
+        return v
+
+    @field_validator('username_prefix', mode='before')
+    @classmethod
+    def validate_username_prefix(cls, v):
+        """Convert username_prefix to string if it's an integer."""
+        if isinstance(v, int):
+            return str(v)
+        return v
+
+    @field_validator('fh_name', mode='before')
+    @classmethod
+    def validate_fh_name(cls, v):
+        """Handle null values for father/husband name."""
+        if v is None:
+            return None
+        return str(v)
 
 
 class ContainerData(BaseModel):
@@ -56,6 +92,7 @@ class SurveillanceResponse(BaseModel):
     """Model for surveillance data response."""
     combined_data: List[CombinedData] = Field(..., description="Combined surveillance data")
     container_data: List[ContainerData] = Field(..., description="Container surveillance data")
+    users: List[UserData] = Field(..., description="Users who submitted data")
     total_records: int = Field(..., description="Total number of records")
 
 

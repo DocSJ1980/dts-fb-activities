@@ -1,13 +1,15 @@
 """Data processing service for surveillance data."""
 
 import pandas as pd
+import json
+import os
 from datetime import datetime
 from typing import List, Tuple
 from bs4 import BeautifulSoup
 
 from .auth import auth_service
 from .scraper import scraper_service
-from ..models.schemas import CombinedData, ContainerData
+from ..models.schemas import CombinedData, ContainerData, UserData
 
 
 class DataProcessingError(Exception):
@@ -17,6 +19,63 @@ class DataProcessingError(Exception):
 
 class DataProcessingService:
     """Service for processing surveillance data."""
+
+    def load_users_from_json(self) -> List[UserData]:
+        """
+        Load users from users.json file.
+
+        Returns:
+            List[UserData]: List of user data objects
+        """
+        try:
+            # Get the path to users.json file (relative to the current file)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            users_file_path = os.path.join(current_dir, '..', 'users.json')
+
+            if not os.path.exists(users_file_path):
+                raise DataProcessingError(f"Users JSON file not found at: {users_file_path}")
+
+            with open(users_file_path, 'r', encoding='utf-8') as file:
+                users_data = json.load(file)
+
+            if not isinstance(users_data, list):
+                raise DataProcessingError("Users JSON file should contain a list of user objects")
+
+            # Convert to UserData objects
+            users = []
+            for i, user_dict in enumerate(users_data):
+                try:
+                    users.append(UserData(**user_dict))
+                except Exception as validation_error:
+                    raise DataProcessingError(f"Invalid user data at index {i}: {str(validation_error)}")
+
+            return users
+
+        except DataProcessingError:
+            raise
+        except Exception as e:
+            raise DataProcessingError(f"Failed to load users from JSON: {str(e)}")
+
+    def create_default_user(self, submitted_by: str) -> UserData:
+        """
+        Create a default user object for unknown submitted_by values.
+
+        Args:
+            submitted_by (str): The submitted_by value
+
+        Returns:
+            UserData: Default user object
+        """
+        return UserData(
+            name="Unknown User",
+            fh_name="Unknown",
+            cnic=0,
+            designation="Unknown",
+            contact_no="N/A",
+            username=f"unknown({submitted_by})",
+            username_prefix=submitted_by.strip(),
+            full_name=f"Unknown User ({submitted_by.strip()})"
+        )
     
     def parse_html_table_to_dataframe(self, html_content: bytes) -> pd.DataFrame:
         """
@@ -327,9 +386,9 @@ class DataProcessingService:
             raise DataProcessingError(f"Failed to get scrapped data: {str(e)}")
 
     def combine_data(self, cookie_value: str, target_date: datetime,
-                    town_code: int, uc_code: int) -> Tuple[List[CombinedData], List[ContainerData]]:
+                    town_code: int, uc_code: int) -> Tuple[List[CombinedData], List[ContainerData], List[UserData]]:
         """
-        Combine surveillance data with location data.
+        Combine surveillance data with location data and return users based on unique Submitted_by values.
 
         Args:
             cookie_value (str): Authentication cookie
@@ -338,11 +397,13 @@ class DataProcessingService:
             uc_code (int): UC code
 
         Returns:
-            Tuple[List[CombinedData], List[ContainerData]]: Combined and container data
+            Tuple[List[CombinedData], List[ContainerData], List[UserData]]: Combined data, container data, and users
         """
+        print(f"combine_data called with date: {target_date}, town: {town_code}, uc: {uc_code}")
         try:
             # Get main and container data
             main_df, container_df = self.get_scrapped_data_cleaned(cookie_value, target_date, town_code, uc_code)
+            print(f"Got main_df with {len(main_df)} rows and container_df with {len(container_df)} rows")
 
             # Get location data
             locations_df = self.get_filtered_surveillance_data(cookie_value, target_date, town_code, uc_code)
@@ -362,7 +423,58 @@ class DataProcessingService:
             for _, row in container_df.iterrows():
                 container_data.append(ContainerData(**row.to_dict()))
 
-            return combined_data, container_data
+            # Get users based on unique Submitted_by values
+            users = []
+            print(f"Combined_df columns: {list(combined_df.columns) if not combined_df.empty else 'DataFrame is empty'}")
+            print(f"Combined_df shape: {combined_df.shape}")
+
+            if not combined_df.empty and 'Submitted_by' in combined_df.columns:
+                # Get unique Submitted_by values and trim whitespaces
+                unique_submitted_by = combined_df['Submitted_by'].astype(str).str.strip().unique()
+
+                # Load all users from JSON
+                try:
+                    all_users = self.load_users_from_json()
+                    print(f"Loaded {len(all_users)} users from JSON")
+                    print(all_users[0])
+                except DataProcessingError as e:
+                    print(f"Failed to load users from JSON: {str(e)}")
+                    # If we can't load users, create default users for all submitted_by values
+                    for submitted_by in unique_submitted_by:
+                        if submitted_by and submitted_by != 'nan':  # Skip empty or NaN values
+                            users.append(self.create_default_user(submitted_by))
+                    return combined_data, container_data, users
+
+                print(f"Unique submitted_by values: {unique_submitted_by}")
+
+                # Match users based on username_prefix (handle both string and numeric comparisons)
+                for submitted_by in unique_submitted_by:
+                    print(f"Processing submitted_by: {submitted_by}")
+                    if not submitted_by or submitted_by == 'nan':  # Skip empty or NaN values
+                        print(f"Skipping empty/nan value: {submitted_by}")
+                        continue
+
+                    user_found = False
+                    submitted_by_str = str(submitted_by).strip()
+                    print(f"Looking for user with username_prefix: {submitted_by_str}")
+
+                    for user in all_users:
+                        # Compare both as strings (trimmed) and handle potential numeric values
+                        user_prefix_str = str(user.username_prefix).strip()
+
+                        if user_prefix_str == submitted_by_str:
+                            print(f"Match found! {user_prefix_str} == {submitted_by_str}")
+                            print(f"User: {user.name}")
+                            users.append(user)
+                            user_found = True
+                            break  # Found match, move to next submitted_by
+
+                    # If no user found, create a default user
+                    if not user_found:
+                        print(f"No match found for {submitted_by_str}, creating default user")
+                        users.append(self.create_default_user(submitted_by))
+
+            return combined_data, container_data, users
 
         except Exception as e:
             raise DataProcessingError(f"Failed to combine data: {str(e)}")

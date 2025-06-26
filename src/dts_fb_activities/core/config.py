@@ -35,6 +35,8 @@ class Settings(BaseSettings):
         description="CORS allowed origins"
     )
     
+    cache_ttl: Optional[int] = Field(default=300, env="CACHE_TTL", description="Cache TTL in seconds")
+
     class Config:
         """Pydantic config."""
         env_file = ".env"

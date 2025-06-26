@@ -43,7 +43,7 @@ async def get_towns():
         def fetch_towns():
             return data_service.get_all_towns()
         
-        towns = cache_service.get_or_set(cache_key, fetch_towns, ttl=300)  # 5 minutes
+        towns = cache_service.get_or_set(cache_key, fetch_towns, ttl=settings.cache_ttl)  # 5 minutes
         return towns
         
     except DataAccessError as e:
@@ -75,7 +75,7 @@ async def get_ucs_by_town(town_code: int):
         def fetch_ucs():
             return data_service.get_ucs_by_town_code(town_code)
         
-        ucs = cache_service.get_or_set(cache_key, fetch_ucs, ttl=300)  # 5 minutes
+        ucs = cache_service.get_or_set(cache_key, fetch_ucs, ttl=settings.cache_ttl)  # 5 minutes
         return ucs
         
     except DataAccessError as e:
@@ -130,19 +130,20 @@ async def get_surveillance_data(
             
             # Get surveillance data
             try:
-                combined_data, container_data = data_processor.combine_data(
+                combined_data, container_data, users = data_processor.combine_data(
                     cookie_value, target_date, town_code, uc_code
                 )
                 return SurveillanceResponse(
                     combined_data=combined_data,
                     container_data=container_data,
+                    users=users,
                     total_records=len(combined_data)
                 )
             except DataProcessingError as e:
                 raise HTTPException(status_code=500, detail=f"Data processing error: {str(e)}")
         
         # Try to get from cache first, otherwise fetch and cache
-        return cache_service.get_or_set(cache_key, fetch_surveillance_data, ttl=300)  # 5 minutes
+        return cache_service.get_or_set(cache_key, fetch_surveillance_data, ttl=settings.cache_ttl)  # 5 minutes
         
     except HTTPException:
         raise
