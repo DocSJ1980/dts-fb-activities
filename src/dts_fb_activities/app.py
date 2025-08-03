@@ -15,9 +15,7 @@ from .models.schemas import ErrorResponse
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)
@@ -30,20 +28,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting DTS FB Activities API")
     logger.info(f"Version: {settings.app_version}")
     logger.info(f"Debug mode: {settings.debug}")
-    
+
     # Validate configuration
     try:
-        from .services.auth import auth_service
-        from .services.data_access import data_service
-        from .services.cache import cache_service
         logger.info("Configuration validated successfully")
-        logger.info("Cache service initialized")
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         # Don't raise here to allow the app to start for health checks
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down DTS FB Activities API")
 
@@ -55,7 +49,7 @@ app = FastAPI(
     description="API for DTS FB Activities - Dengue Surveillance Data",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -73,13 +67,13 @@ app.add_middleware(
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled exceptions."""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    
+
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
             error="Internal Server Error",
-            detail="An unexpected error occurred. Please try again later."
-        ).dict()
+            detail="An unexpected error occurred. Please try again later.",
+        ).dict(),
     )
 
 
@@ -95,15 +89,13 @@ async def root():
         "message": "DTS FB Activities API",
         "version": settings.app_version,
         "docs": "/docs",
-        "health": "/api/v1/health"
+        "health": "/api/v1/health",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
-        "dts_fb_activities.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug
+        "dts_fb_activities.app:app", host="0.0.0.0", port=8000, reload=settings.debug
     )

@@ -13,40 +13,47 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class ScrapingError(Exception):
     """Custom exception for scraping errors."""
+
     pass
 
 
 class ScrapingService:
     """Service for scraping data from PITB dashboard."""
-    
+
     def __init__(self):
         """Initialize the scraping service."""
         self.district_id = settings.district_id
         self.report_type = settings.report_type
-    
-    def fetch_page_data(self, cookie_value: str, target_date: datetime, 
-                       town_code: int, uc_code: int, page_number: int = 1) -> bytes:
+
+    def fetch_page_data(
+        self,
+        cookie_value: str,
+        target_date: datetime,
+        town_code: int,
+        uc_code: int,
+        page_number: int = 1,
+    ) -> bytes:
         """
         Fetch page data from the dashboard API.
-        
+
         Args:
             cookie_value (str): Authentication cookie value
             target_date (datetime): Target date for data
             town_code (int): Town code
             uc_code (int): UC code
             page_number (int): Page number for pagination
-            
+
         Returns:
             bytes: Raw HTML content
-            
+
         Raises:
             ScrapingError: If scraping fails
         """
         try:
             formatted_date = target_date.strftime("%Y-%m-%d")
-            
+
             headers = {"Cookie": f"_dengue_new_session={cookie_value}"}
-            
+
             url = (
                 f"https://dashboard-tracking.punjab.gov.pk/activities/vector_surveillances/line_list"
                 f"?activity_type={self.report_type}"
@@ -58,41 +65,44 @@ class ScrapingService:
                 f"&tehsil_id={town_code}"
                 f"&uc={uc_code}"
             )
-            
-            response = requests.get(url, headers=headers, data={}, verify=False, timeout=30)
-            
+
+            response = requests.get(
+                url, headers=headers, data={}, verify=False, timeout=30
+            )
+
             # Check if we got redirected to login page
             if "login" in response.url.lower() or "sign in" in response.text.lower():
                 raise ScrapingError("Authentication failed - redirected to login page")
-            
+
             response.raise_for_status()
             return response.content
-            
+
         except requests.RequestException as e:
             raise ScrapingError(f"Failed to fetch page data: {str(e)}")
-    
-    def get_excel_data(self, cookie_value: str, target_date: datetime,
-                      town_code: int, uc_code: int) -> bytes:
+
+    def get_excel_data(
+        self, cookie_value: str, target_date: datetime, town_code: int, uc_code: int
+    ) -> bytes:
         """
         Fetch Excel data from the dashboard API.
-        
+
         Args:
             cookie_value (str): Authentication cookie value
             target_date (datetime): Target date for data
             town_code (int): Town code
             uc_code (int): UC code
-            
+
         Returns:
             bytes: Raw HTML content with location data
-            
+
         Raises:
             ScrapingError: If scraping fails
         """
         try:
             formatted_date = target_date.strftime("%Y-%m-%d")
-            
+
             headers = {"Cookie": f"_dengue_new_session={cookie_value}"}
-            
+
             url = (
                 f"https://dashboard-tracking.punjab.gov.pk//activities/vector_surveillances/line_list"
                 f"?action=line_list"
@@ -108,34 +118,41 @@ class ScrapingService:
                 f"&tehsil_id={town_code}"
                 f"&uc={uc_code}"
             )
-            
-            response = requests.get(url, headers=headers, data={}, verify=False, timeout=30)
-            
+
+            response = requests.get(
+                url, headers=headers, data={}, verify=False, timeout=30
+            )
+
             # Check if we got redirected to login page
             if "login" in response.url.lower() or "sign in" in response.text.lower():
                 raise ScrapingError("Authentication failed - redirected to login page")
-            
+
             response.raise_for_status()
             return response.content
-            
+
         except requests.RequestException as e:
             raise ScrapingError(f"Failed to fetch Excel data: {str(e)}")
-    
+
     def get_total_records(self, page_data: bytes) -> int:
         """
         Extract total records count from page data.
-        
+
         Args:
             page_data (bytes): Raw HTML page data
-            
+
         Returns:
             int: Total number of records
         """
         try:
-            # Extract the number after "Total Records:"
-            match = re.search(r'Total Records:\s*</b>\s*(\d+)', page_data.decode('utf-8'))
+            # Extract the number after "Total Records:" (supports thousands separators like 1,727)
+            text = page_data.decode("utf-8", errors="ignore")
+            match = re.search(
+                r"Total Records:\s*</b>\s*([\d,]+)", text, flags=re.IGNORECASE
+            )
             if match:
-                return int(match.group(1))
+                # Remove commas and convert to int
+                value = match.group(1).replace(",", "")
+                return int(value) if value.isdigit() else 0
             else:
                 return 0
         except Exception:

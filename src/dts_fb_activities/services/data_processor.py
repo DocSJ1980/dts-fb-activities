@@ -14,6 +14,7 @@ from ..models.schemas import CombinedData, ContainerData, UserData
 
 class DataProcessingError(Exception):
     """Custom exception for data processing errors."""
+
     pass
 
 
@@ -30,16 +31,20 @@ class DataProcessingService:
         try:
             # Get the path to users.json file (relative to the current file)
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            users_file_path = os.path.join(current_dir, '..', 'users.json')
+            users_file_path = os.path.join(current_dir, "..", "users.json")
 
             if not os.path.exists(users_file_path):
-                raise DataProcessingError(f"Users JSON file not found at: {users_file_path}")
+                raise DataProcessingError(
+                    f"Users JSON file not found at: {users_file_path}"
+                )
 
-            with open(users_file_path, 'r', encoding='utf-8') as file:
+            with open(users_file_path, "r", encoding="utf-8") as file:
                 users_data = json.load(file)
 
             if not isinstance(users_data, list):
-                raise DataProcessingError("Users JSON file should contain a list of user objects")
+                raise DataProcessingError(
+                    "Users JSON file should contain a list of user objects"
+                )
 
             # Convert to UserData objects
             users = []
@@ -47,7 +52,9 @@ class DataProcessingService:
                 try:
                     users.append(UserData(**user_dict))
                 except Exception as validation_error:
-                    raise DataProcessingError(f"Invalid user data at index {i}: {str(validation_error)}")
+                    raise DataProcessingError(
+                        f"Invalid user data at index {i}: {str(validation_error)}"
+                    )
 
             return users
 
@@ -74,52 +81,52 @@ class DataProcessingService:
             contact_no="N/A",
             username=f"unknown({submitted_by})",
             username_prefix=submitted_by.strip(),
-            full_name=f"Unknown User ({submitted_by.strip()})"
+            full_name=f"Unknown User ({submitted_by.strip()})",
         )
-    
+
     def parse_html_table_to_dataframe(self, html_content: bytes) -> pd.DataFrame:
         """
         Parse HTML table content and extract Activity ID, Latitude, and Longitude columns.
-        
+
         Args:
             html_content (bytes): Raw HTML content
-            
+
         Returns:
             pd.DataFrame: DataFrame with Activity ID, Latitude, and Longitude
         """
         try:
             # Parse HTML content
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
+            soup = BeautifulSoup(html_content, "html.parser")
+
             # Find the table
-            table = soup.find('table')
+            table = soup.find("table")
             if not table:
                 return pd.DataFrame()
-            
+
             # Extract headers
             headers = []
-            header_row = table.find('thead').find('tr')
-            for th in header_row.find_all('th'):
+            header_row = table.find("thead").find("tr")
+            for th in header_row.find_all("th"):
                 headers.append(th.get_text(strip=True))
-            
+
             # Extract data rows
             rows_data = []
-            tbody = table.find('tbody')
+            tbody = table.find("tbody")
             if tbody:
-                for row in tbody.find_all('tr'):
+                for row in tbody.find_all("tr"):
                     row_data = []
-                    for td in row.find_all('td'):
+                    for td in row.find_all("td"):
                         # Get text content, replacing <br/> with spaces if needed
-                        cell_text = td.get_text(separator=' ', strip=True)
+                        cell_text = td.get_text(separator=" ", strip=True)
                         row_data.append(cell_text)
                     rows_data.append(row_data)
-            
+
             # Create DataFrame
             df = pd.DataFrame(rows_data, columns=headers)
-            
+
             # Filter to keep only Activity ID, Latitude, and Longitude columns
-            columns_to_keep = ['Activity ID', 'Latitude', 'Longitude']
-            
+            columns_to_keep = ["Activity ID", "Latitude", "Longitude"]
+
             # Check if columns exist (handle potential column name variations)
             available_columns = []
             for col in columns_to_keep:
@@ -129,67 +136,80 @@ class DataProcessingService:
                 else:
                     # Try to find similar column names (case-insensitive, with/without spaces)
                     for df_col in df.columns:
-                        if col.lower().replace(' ', '') in df_col.lower().replace(' ', ''):
+                        if col.lower().replace(" ", "") in df_col.lower().replace(
+                            " ", ""
+                        ):
                             available_columns.append(df_col)
                             break
-            
+
             if not available_columns:
                 return pd.DataFrame()
-            
+
             # Filter DataFrame to keep only the required columns
             filtered_df = df[available_columns].copy()
-            
+
             # Clean up latitude and longitude columns (remove extra spaces, convert to numeric)
             for col in filtered_df.columns:
-                if 'latitude' in col.lower():
-                    filtered_df[col] = pd.to_numeric(filtered_df[col].astype(str).str.strip(), errors='coerce')
-                elif 'longitude' in col.lower():
-                    filtered_df[col] = pd.to_numeric(filtered_df[col].astype(str).str.strip(), errors='coerce')
-            
+                if "latitude" in col.lower():
+                    filtered_df[col] = pd.to_numeric(
+                        filtered_df[col].astype(str).str.strip(), errors="coerce"
+                    )
+                elif "longitude" in col.lower():
+                    filtered_df[col] = pd.to_numeric(
+                        filtered_df[col].astype(str).str.strip(), errors="coerce"
+                    )
+
             # Rename Activity ID column to Activity_ID
             column_mapping = {}
             for col in filtered_df.columns:
-                if 'activity' in col.lower() and 'id' in col.lower():
-                    column_mapping[col] = 'Activity_ID'
-            
+                if "activity" in col.lower() and "id" in col.lower():
+                    column_mapping[col] = "Activity_ID"
+
             if column_mapping:
                 filtered_df = filtered_df.rename(columns=column_mapping)
-            
+
             return filtered_df
-            
+
         except Exception as e:
             raise DataProcessingError(f"Failed to parse HTML table: {str(e)}")
-    
-    def get_filtered_surveillance_data(self, cookie_value: str, target_date: datetime,
-                                     town_code: int, uc_code: int) -> pd.DataFrame:
+
+    def get_filtered_surveillance_data(
+        self, cookie_value: str, target_date: datetime, town_code: int, uc_code: int
+    ) -> pd.DataFrame:
         """
         Complete function to fetch and parse surveillance data.
-        
+
         Args:
             cookie_value (str): Authentication cookie
             target_date (datetime): Target date
             town_code (int): Town code
             uc_code (int): UC code
-            
+
         Returns:
             pd.DataFrame: DataFrame with Activity ID, Latitude, and Longitude only
         """
         try:
             # Fetch raw HTML data
-            html_content = scraper_service.get_excel_data(cookie_value, target_date, town_code, uc_code)
-            
+            html_content = scraper_service.get_excel_data(
+                cookie_value, target_date, town_code, uc_code
+            )
+
             if html_content is None:
                 return pd.DataFrame()
-            
+
             # Parse HTML and extract required columns
             df = self.parse_html_table_to_dataframe(html_content)
-            
-            return df
-            
-        except Exception as e:
-            raise DataProcessingError(f"Failed to get filtered surveillance data: {str(e)}")
 
-    def parse_html_table(self, html_content: bytes) -> Tuple[pd.DataFrame, pd.DataFrame]:
+            return df
+
+        except Exception as e:
+            raise DataProcessingError(
+                f"Failed to get filtered surveillance data: {str(e)}"
+            )
+
+    def parse_html_table(
+        self, html_content: bytes
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Parses HTML table and returns two DataFrames:
         1. Main data without Container Tag, Checked, and Positive
@@ -202,8 +222,8 @@ class DataProcessingService:
             Tuple[pd.DataFrame, pd.DataFrame]: Main data and container data
         """
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
-            table = soup.find('table', {'id': 'p_table'})
+            soup = BeautifulSoup(html_content, "html.parser")
+            table = soup.find("table", {"id": "p_table"})
 
             if not table:
                 return pd.DataFrame(), pd.DataFrame()
@@ -212,40 +232,40 @@ class DataProcessingService:
             container_data = []
 
             # Find all rows in tbody
-            tbody = table.find('tbody')
+            tbody = table.find("tbody")
             if not tbody:
                 return pd.DataFrame(), pd.DataFrame()
 
-            rows = tbody.find_all('tr')
+            rows = tbody.find_all("tr")
 
             for row in rows:
-                cells = row.find_all('td')
+                cells = row.find_all("td")
                 if len(cells) < 16:  # Skip if not enough columns
                     continue
 
                 # Extract main data (excluding Container Tag, Checked, Positive)
                 # Extract picture URL with full domain
                 picture_cell = cells[15]
-                picture_link = picture_cell.find('a')
-                if picture_link and picture_link.get('href'):
+                picture_link = picture_cell.find("a")
+                if picture_link and picture_link.get("href"):
                     picture_url = f"https://dashboard-tracking.punjab.gov.pk{picture_link.get('href')}"
                 else:
                     picture_url = cells[15].get_text(strip=True)
 
                 main_record = {
-                    'Sr_No': cells[0].get_text(strip=True),
-                    'Activity_ID': cells[1].get_text(strip=True),
-                    'Name_of_Family_Head': cells[2].get_text(strip=True),
-                    'Shop_House': cells[3].get_text(strip=True),
-                    'Address': cells[4].get_text(strip=True),
-                    'Locality': cells[5].get_text(strip=True),
-                    'District': cells[7].get_text(strip=True),
-                    'Town': cells[8].get_text(strip=True),
-                    'UC': cells[9].get_text(strip=True),
-                    'Tag': cells[10].get_text(strip=True),
-                    'Submitted_by': cells[13].get_text(strip=True),
-                    'Activity_DateTime': cells[14].get_text(strip=True),
-                    'Picture': picture_url
+                    "Sr_No": cells[0].get_text(strip=True),
+                    "Activity_ID": cells[1].get_text(strip=True),
+                    "Name_of_Family_Head": cells[2].get_text(strip=True),
+                    "Shop_House": cells[3].get_text(strip=True),
+                    "Address": cells[4].get_text(strip=True),
+                    "Locality": cells[5].get_text(strip=True),
+                    "District": cells[7].get_text(strip=True),
+                    "Town": cells[8].get_text(strip=True),
+                    "UC": cells[9].get_text(strip=True),
+                    "Tag": cells[10].get_text(strip=True),
+                    "Submitted_by": cells[13].get_text(strip=True),
+                    "Activity_DateTime": cells[14].get_text(strip=True),
+                    "Picture": picture_url,
                 }
                 main_data.append(main_record)
 
@@ -255,7 +275,7 @@ class DataProcessingService:
                 # Parse Container Tags (column 6)
                 container_tags = []
                 container_cell = cells[6]
-                container_paragraphs = container_cell.find_all('p')
+                container_paragraphs = container_cell.find_all("p")
                 for p in container_paragraphs:
                     tag_text = p.get_text(strip=True)
                     if tag_text:
@@ -264,7 +284,7 @@ class DataProcessingService:
                 # Parse Checked values (column 11)
                 checked_values = []
                 checked_cell = cells[11]
-                checked_paragraphs = checked_cell.find_all('p')
+                checked_paragraphs = checked_cell.find_all("p")
                 for p in checked_paragraphs:
                     checked_text = p.get_text(strip=True)
                     if checked_text:
@@ -273,21 +293,27 @@ class DataProcessingService:
                 # Parse Positive values (column 12)
                 positive_values = []
                 positive_cell = cells[12]
-                positive_paragraphs = positive_cell.find_all('p')
+                positive_paragraphs = positive_cell.find_all("p")
                 for p in positive_paragraphs:
                     positive_text = p.get_text(strip=True)
                     if positive_text:
                         positive_values.append(positive_text)
 
                 # Create container records (one for each container tag)
-                max_length = max(len(container_tags), len(checked_values), len(positive_values))
+                max_length = max(
+                    len(container_tags), len(checked_values), len(positive_values)
+                )
 
                 for i in range(max_length):
                     container_record = {
-                        'Activity_ID': activity_id,
-                        'Container_Tag': container_tags[i] if i < len(container_tags) else '',
-                        'Checked': checked_values[i] if i < len(checked_values) else '',
-                        'Positive': positive_values[i] if i < len(positive_values) else ''
+                        "Activity_ID": activity_id,
+                        "Container_Tag": (
+                            container_tags[i] if i < len(container_tags) else ""
+                        ),
+                        "Checked": checked_values[i] if i < len(checked_values) else "",
+                        "Positive": (
+                            positive_values[i] if i < len(positive_values) else ""
+                        ),
                     }
                     container_data.append(container_record)
 
@@ -300,7 +326,9 @@ class DataProcessingService:
         except Exception as e:
             raise DataProcessingError(f"Failed to parse HTML table: {str(e)}")
 
-    def clean_dataframes(self, main_df: pd.DataFrame, container_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def clean_dataframes(
+        self, main_df: pd.DataFrame, container_df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Clean and convert data types for the DataFrames.
 
@@ -314,26 +342,39 @@ class DataProcessingService:
         try:
             if not main_df.empty:
                 # Convert Activity_ID to string to ensure consistency
-                main_df['Activity_ID'] = main_df['Activity_ID'].astype(str)
+                main_df["Activity_ID"] = main_df["Activity_ID"].astype(str)
 
                 # Clean datetime field
-                main_df['Activity_DateTime'] = main_df['Activity_DateTime'].str.replace('on ', '').str.replace(' at ', ' ')
+                main_df["Activity_DateTime"] = (
+                    main_df["Activity_DateTime"]
+                    .str.replace("on ", "")
+                    .str.replace(" at ", " ")
+                )
 
             if not container_df.empty:
                 # Convert Activity_ID to string
-                container_df['Activity_ID'] = container_df['Activity_ID'].astype(str)
+                container_df["Activity_ID"] = container_df["Activity_ID"].astype(str)
 
                 # Convert Checked and Positive to numeric
-                container_df['Checked'] = pd.to_numeric(container_df['Checked'], errors='coerce').fillna(0).astype(int)
-                container_df['Positive'] = pd.to_numeric(container_df['Positive'], errors='coerce').fillna(0).astype(int)
+                container_df["Checked"] = (
+                    pd.to_numeric(container_df["Checked"], errors="coerce")
+                    .fillna(0)
+                    .astype(int)
+                )
+                container_df["Positive"] = (
+                    pd.to_numeric(container_df["Positive"], errors="coerce")
+                    .fillna(0)
+                    .astype(int)
+                )
 
             return main_df, container_df
 
         except Exception as e:
             raise DataProcessingError(f"Failed to clean dataframes: {str(e)}")
 
-    def get_scrapped_data_cleaned(self, cookie_value: str, target_date: datetime,
-                                town_code: int, uc_code: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def get_scrapped_data_cleaned(
+        self, cookie_value: str, target_date: datetime, town_code: int, uc_code: int
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Main function that returns cleaned DataFrames for a specific date, town, and UC.
 
@@ -348,8 +389,12 @@ class DataProcessingService:
         """
         try:
             # First, get a sample page to calculate total pages
-            sample_page_data = scraper_service.fetch_page_data(cookie_value, target_date, town_code, uc_code, 1)
+            sample_page_data = scraper_service.fetch_page_data(
+                cookie_value, target_date, town_code, uc_code, 1
+            )
+            # print(sample_page_data)
             total_records = scraper_service.get_total_records(sample_page_data)
+            print(f"Total records: {total_records}")
             total_pages = total_records // 20 + 1 if total_records > 0 else 1
 
             all_main_data = []
@@ -358,7 +403,9 @@ class DataProcessingService:
             # Loop through all pages
             for page_number in range(1, total_pages + 1):
                 # Fetch page data
-                page_data = scraper_service.fetch_page_data(cookie_value, target_date, town_code, uc_code, page_number)
+                page_data = scraper_service.fetch_page_data(
+                    cookie_value, target_date, town_code, uc_code, page_number
+                )
 
                 # Parse the HTML table
                 main_df, container_df = self.parse_html_table(page_data)
@@ -385,8 +432,9 @@ class DataProcessingService:
         except Exception as e:
             raise DataProcessingError(f"Failed to get scrapped data: {str(e)}")
 
-    def combine_data(self, cookie_value: str, target_date: datetime,
-                    town_code: int, uc_code: int) -> Tuple[List[CombinedData], List[ContainerData], List[UserData]]:
+    def combine_data(
+        self, cookie_value: str, target_date: datetime, town_code: int, uc_code: int
+    ) -> Tuple[List[CombinedData], List[ContainerData], List[UserData]]:
         """
         Combine surveillance data with location data and return users based on unique Submitted_by values.
 
@@ -399,18 +447,26 @@ class DataProcessingService:
         Returns:
             Tuple[List[CombinedData], List[ContainerData], List[UserData]]: Combined data, container data, and users
         """
-        print(f"combine_data called with date: {target_date}, town: {town_code}, uc: {uc_code}")
+        print(
+            f"combine_data called with date: {target_date}, town: {town_code}, uc: {uc_code}"
+        )
         try:
             # Get main and container data
-            main_df, container_df = self.get_scrapped_data_cleaned(cookie_value, target_date, town_code, uc_code)
-            print(f"Got main_df with {len(main_df)} rows and container_df with {len(container_df)} rows")
+            main_df, container_df = self.get_scrapped_data_cleaned(
+                cookie_value, target_date, town_code, uc_code
+            )
+            print(
+                f"Got main_df with {len(main_df)} rows and container_df with {len(container_df)} rows"
+            )
 
             # Get location data
-            locations_df = self.get_filtered_surveillance_data(cookie_value, target_date, town_code, uc_code)
+            locations_df = self.get_filtered_surveillance_data(
+                cookie_value, target_date, town_code, uc_code
+            )
 
             # Merge main data with location data
             if not main_df.empty and not locations_df.empty:
-                combined_df = main_df.merge(locations_df, on='Activity_ID', how='left')
+                combined_df = main_df.merge(locations_df, on="Activity_ID", how="left")
             else:
                 combined_df = main_df
 
@@ -425,12 +481,16 @@ class DataProcessingService:
 
             # Get users based on unique Submitted_by values
             users = []
-            print(f"Combined_df columns: {list(combined_df.columns) if not combined_df.empty else 'DataFrame is empty'}")
+            print(
+                f"Combined_df columns: {list(combined_df.columns) if not combined_df.empty else 'DataFrame is empty'}"
+            )
             print(f"Combined_df shape: {combined_df.shape}")
 
-            if not combined_df.empty and 'Submitted_by' in combined_df.columns:
+            if not combined_df.empty and "Submitted_by" in combined_df.columns:
                 # Get unique Submitted_by values and trim whitespaces
-                unique_submitted_by = combined_df['Submitted_by'].astype(str).str.strip().unique()
+                unique_submitted_by = (
+                    combined_df["Submitted_by"].astype(str).str.strip().unique()
+                )
 
                 # Load all users from JSON
                 try:
@@ -441,7 +501,9 @@ class DataProcessingService:
                     print(f"Failed to load users from JSON: {str(e)}")
                     # If we can't load users, create default users for all submitted_by values
                     for submitted_by in unique_submitted_by:
-                        if submitted_by and submitted_by != 'nan':  # Skip empty or NaN values
+                        if (
+                            submitted_by and submitted_by != "nan"
+                        ):  # Skip empty or NaN values
                             users.append(self.create_default_user(submitted_by))
                     return combined_data, container_data, users
 
@@ -449,29 +511,35 @@ class DataProcessingService:
 
                 # Match users based on username_prefix (handle both string and numeric comparisons)
                 for submitted_by in unique_submitted_by:
-                    print(f"Processing submitted_by: {submitted_by}")
-                    if not submitted_by or submitted_by == 'nan':  # Skip empty or NaN values
-                        print(f"Skipping empty/nan value: {submitted_by}")
+                    # print(f"Processing submitted_by: {submitted_by}")
+                    if (
+                        not submitted_by or submitted_by == "nan"
+                    ):  # Skip empty or NaN values
+                        # print(f"Skipping empty/nan value: {submitted_by}")
                         continue
 
                     user_found = False
                     submitted_by_str = str(submitted_by).strip()
-                    print(f"Looking for user with username_prefix: {submitted_by_str}")
+                    # print(f"Looking for user with username_prefix: {submitted_by_str}")
 
                     for user in all_users:
                         # Compare both as strings (trimmed) and handle potential numeric values
                         user_prefix_str = str(user.username_prefix).strip()
 
                         if user_prefix_str == submitted_by_str:
-                            print(f"Match found! {user_prefix_str} == {submitted_by_str}")
-                            print(f"User: {user.name}")
+                            print(
+                                f"Match found! {user_prefix_str} == {submitted_by_str}"
+                            )
+                            # print(f"User: {user.name}")
                             users.append(user)
                             user_found = True
                             break  # Found match, move to next submitted_by
 
                     # If no user found, create a default user
                     if not user_found:
-                        print(f"No match found for {submitted_by_str}, creating default user")
+                        # print(
+                        #     f"No match found for {submitted_by_str}, creating default user"
+                        # )
                         users.append(self.create_default_user(submitted_by))
 
             return combined_data, container_data, users
