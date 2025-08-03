@@ -527,9 +527,9 @@ class DataProcessingService:
                         user_prefix_str = str(user.username_prefix).strip()
 
                         if user_prefix_str == submitted_by_str:
-                            print(
-                                f"Match found! {user_prefix_str} == {submitted_by_str}"
-                            )
+                            # print(
+                            #     f"Match found! {user_prefix_str} == {submitted_by_str}"
+                            # )
                             # print(f"User: {user.name}")
                             users.append(user)
                             user_found = True
